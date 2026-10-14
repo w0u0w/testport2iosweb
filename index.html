@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BLE Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      max-width: 800px;
+      margin: auto;
+    }
+
+    button {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin: 8px 0;
+      font-size: 16px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      background: #111;
+      color: #0f0;
+      padding: 12px;
+      min-height: 300px;
+      overflow: auto;
+    }
+  </style>
+</head>
+<body>
+
+<h1>BLE Test</h1>
+
+<div>
+  Secure context:
+  <b id="secure"></b>
+</div>
+
+<div>
+  Web Bluetooth:
+  <b id="support"></b>
+</div>
+
+<button id="select">1. Find device</button>
+<button id="connect" disabled>2. Connect</button>
+<button id="discover" disabled>3. Discover GATT</button>
+<button id="disconnect" disabled>Disconnect</button>
+
+<h2>Log</h2>
+<pre id="log"></pre>
+
+<script>
+let device = null;
+let server = null;
+
+const logEl = document.getElementById("log");
+
+function log(...args) {
+  const text =
+    `[${new Date().toLocaleTimeString()}] ` +
+    args.map(x =>
+      typeof x === "object"
+        ? JSON.stringify(x, null, 2)
+        : String(x)
+    ).join(" ");
+
+  console.log(text);
+
+  logEl.textContent += text + "\n";
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+document.getElementById("secure").textContent =
+  window.isSecureContext ? "YES" : "NO";
+
+document.getElementById("support").textContent =
+  navigator.bluetooth ? "SUPPORTED" : "NOT SUPPORTED";
+
+
+document.getElementById("select").onclick = async () => {
+  try {
+    log("Opening BLE device selector...");
+
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: []
+    });
+
+    log("Selected device");
+    log("name:", device.name || "(no name)");
+    log("id:", device.id);
+
+    document.getElementById("connect").disabled = false;
+
+    device.addEventListener("gattserverdisconnected", () => {
+      log("DISCONNECTED");
+    });
+
+  } catch (e) {
+    log("SELECT ERROR:", e.name, e.message);
+  }
+};
+
+
+document.getElementById("connect").onclick = async () => {
+  try {
+    if (!device) {
+      log("No selected device");
+      return;
+    }
+
+    log("Connecting...");
+
+    server = await device.gatt.connect();
+
+    log("CONNECTED");
+
+    document.getElementById("discover").disabled = false;
+    document.getElementById("disconnect").disabled = false;
+
+  } catch (e) {
+    log("CONNECT ERROR:", e.name, e.message);
+  }
+};
+
+
+document.getElementById("discover").onclick = async () => {
+  try {
+    if (!server) {
+      log("Not connected");
+      return;
+    }
+
+    log("Discovering services...");
+
+    const services = await server.getPrimaryServices();
+
+    log("Services count:", services.length);
+
+    for (const service of services) {
+
+      log("SERVICE:", service.uuid);
+
+      try {
+        const chars = await service.getCharacteristics();
+
+        for (const char of chars) {
+
+          log(
+            "CHAR:",
+            char.uuid,
+            {
+              read: char.properties.read,
+              write: char.properties.write,
+              writeWithoutResponse:
+                char.properties.writeWithoutResponse,
+              notify: char.properties.notify,
+              indicate: char.properties.indicate
+            }
+          );
+
+        }
+
+      } catch (e) {
+        log(
+          "CHAR DISCOVERY ERROR:",
+          service.uuid,
+          e.message
+        );
+      }
+    }
+
+  } catch (e) {
+    log(
+      "DISCOVER ERROR:",
+      e.name,
+      e.message
+    );
+  }
+};
+
+
+document.getElementById("disconnect").onclick = () => {
+  if (device?.gatt?.connected) {
+    device.gatt.disconnect();
+    log("Disconnect requested");
+  }
+};
+</script>
+
+</body>
+</html>
